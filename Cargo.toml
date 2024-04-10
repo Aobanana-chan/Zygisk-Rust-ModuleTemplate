@@ -1,0 +1,24 @@
+[package]
+name = "zygisk"
+version = "0.1.0"
+edition = "2021"
+authors = ["Aobanana"]
+
+
+[dependencies]
+bitflags = "2.5.0"
+jni = "0.21.1"
+log = "0.4.14"
+
+[lib]
+name = "zygisk_template"
+crate_type = ["cdylib"]
+
+[profile.release]
+strip = true  # Automatically strip symbols from the binary.
+opt-level = "z"  # Optimize for size.
+lto = true
+
+[target.'cfg(target_os = "android")'.dependencies]
+android_logger = "0.13.3"
+ndk = "0.8.0"
