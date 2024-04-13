@@ -7,7 +7,7 @@ use crate::{
 };
 
 #[inline(always)]
-pub fn module_entry_impl(module: &'static dyn ZygiskModule, table: *const (), env: *mut ()) {
+pub fn module_entry_impl(module: *mut dyn ZygiskModule, table: *const (), env: *mut ()) {
     // Cast arguments to their concrete types
     let table: &'static RawApiTable = unsafe { &*table.cast() };
     let env: JNIEnv = unsafe { JNIEnv::from_raw(env.cast()).unwrap() };
@@ -17,15 +17,20 @@ pub fn module_entry_impl(module: &'static dyn ZygiskModule, table: *const (), en
     // for the module, and the other for the `ModuleAbi`.)
     // Note that the original version also leaks memory, but it saves one leak
     // compared to us, thanks to C++ not using fat pointers. Lucky them :(
-    let raw_module = Box::leak(Box::new(RawModule {
-        inner: module,
-        api_table: table,
-    }));
-    let module_abi = Box::leak(Box::new(ModuleAbi::from_module(raw_module)));
-    if table.register_module.unwrap()(table, module_abi) {
-        let api = ZygiskApi::from_raw(table);
-        module.on_load(api, env);
+    unsafe{
+        let module_instance = &mut *module;
+        let raw_module = Box::leak(Box::new(RawModule {
+            inner: module_instance,
+            api_table: table,
+        }));
+        let module_instance = &mut *module;
+        let module_abi = Box::leak(Box::new(ModuleAbi::from_module(raw_module)));
+        if table.register_module.unwrap()(table, module_abi) {
+            let api = ZygiskApi::from_raw(table);
+            module_instance.on_load(api, env);
+        }
     }
+
 }
 
 /// Register a static variable as a Zygisk module.
@@ -45,7 +50,10 @@ macro_rules! zygisk_module {
         #[no_mangle]
         extern "C" fn zygisk_module_entry(table: *const (), env: *mut ()) {
             if let Err(_) = std::panic::catch_unwind(|| {
-                $crate::macros::module_entry_impl($module, table, env);
+                unsafe{
+                    $crate::macros::module_entry_impl($module, table, env);
+                }
+                
             }) {
                 // Panic messages should be displayed by the default panic hook.
                 std::process::abort();
